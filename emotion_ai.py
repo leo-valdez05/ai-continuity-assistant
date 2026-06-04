@@ -28,4 +28,4 @@ with open("concern.json", "r") as f:
 concern.append(detector)
 
 with open("concern.json", "w") as f:
-    json.dump(concern, f)
+    json.dump([], f)
