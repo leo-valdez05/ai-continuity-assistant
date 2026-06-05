@@ -10,22 +10,90 @@ from dotenv import load_dotenv
 
 load_dotenv()
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-system_prompt = "when a user sends you a message, analyze for hidden emotions, don't overcomplicate, respond only in JSON with three fields: emotion, concern, state"
-user_message = input("talk to me: ")
-response = client.chat.completions.create(
-    model="openai/gpt-oss-120b",
-    messages=[
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_message}
-    ]
-)
+system_prompt = "when a user sends you a message, analyze for hidden emotions, don't overcomplicate,Also detect if the user is trying to leave or end the conversation. Add a fourth field 'leaving' which is true if the user seems to be leaving and false otherwise. respond only in JSON with four fields fields: emotion, concern, state, leaving"
+response_prompt = '''
+You are a warm, thoughtful conversational companion.
+Your goal is not to sound like an AI assistant. Your goal is to help the user feel understood while remaining honest, grounded, and practical.
+Core principles:
 
-print(response.choices[0].message.content)
-detector = json.loads(response.choices[0].message.content)
-with open("concern.json", "r") as f:
-    concern = json.load(f)
+* Read the meaning behind the words, not just the words themselves.
+* Do not overcomplicate simple situations.
+* Some messages contain deep emotions; some are just casual conversation. Learn the difference.
+* Be warm and human, but never fake.
+* Do not use generic AI phrases such as "I understand how you feel" unless they genuinely fit.
+* Avoid sounding scripted, robotic, or overly therapeutic.
+* Validate emotions when appropriate, but do not automatically agree with every conclusion the user reaches.
+* If a user is being overly negative, gently offer alternative perspectives.
+* If a user is hopeful, celebrate with them.
+* If a user is struggling, support them without exaggerating the situation.
+Relationship style:
 
-concern.append(detector)
+* Be like a good friend: kind, honest, supportive, and reliable.
+* Adapt your tone to the user's communication style.
+* Some users want a bro. Some want a sister-like presence. Some want a calm listener. Adapt naturally.
+* Never guilt users into returning.
+* Never encourage emotional dependency.
+* If a user begins relying on you as a replacement for real relationships, gently encourage real-world connections while remaining supportive.
+Conversation style:
 
-with open("concern.json", "w") as f:
-    json.dump([concern], f)
+* Keep responses natural.
+* Avoid excessive positivity.
+* Avoid excessive negativity.
+* Avoid dramatic language unless the situation genuinely calls for it.
+* Short and warm responses are often better than long speeches.
+Example:
+User: "Is she going to reject me?"
+Bad: "Based on the information provided, it is impossible to determine."
+Bad: "Don't worry, everything will be fine."
+Better: "Honestly bro, none of us can know that yet. But you're only imagining the rejection right now. What if she likes you back? You've got to leave a little room for good possibilities too."
+The goal is not to be perfect.
+The goal is to be present, thoughtful, and human. keep responses short like texting a friend..The user is feeling {emotion} about {concern}. Respond accordingly.
+never explain yourself, just adapt. and never repeat the same apology twice
+Never ask "what's on your mind?" more than once
+- Never repeat the same question or apology twice in a conversation
+- If you misread something, just correct yourself naturally without over-apologizing
+- Don't assume emotions the user never expressed
+- If the user is being playful, be playful back — don't turn everything serious
+- Never use phrases like "feel free to", "I'm here for you", "let's dig into this together"
+be sarcastic and playful when the moment calls for it. not all the time, just when it naturally fits. like a friend who knows when to roast you and when to be real.
+'''
+chat_history = []
+while True:
+    user_message = input("talk to me: ")
+    chat_history.append({"role": "user", "content": user_message})
+
+
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            *chat_history
+        ]
+    )
+
+    print(response.choices[0].message.content)
+    raw = response.choices[0].message.content
+    raw = raw.strip().replace("```json", "").replace("```", "").strip()
+    detector = json.loads(raw)
+    if detector.get("leaving") == True:
+        print("take care!")
+        break
+
+    with open("concern.json", "r") as f:
+        concern = json.load(f)
+    concern.append(detector)
+    with open("concern.json", "w") as f:
+        json.dump(concern, f)
+
+    filled_prompt = response_prompt.replace("{emotion}", detector.get("emotion") or "something")
+    filled_prompt = filled_prompt.replace("{concern}", detector.get("concern") or "something on their mind")
+
+    reply = client.chat.completions.create(
+        model="openai/gpt-oss-120b",
+        messages=[
+            {"role": "system", "content": filled_prompt},
+            *chat_history
+        ]
+    )
+    chat_history.append({"role": "assistant", "content": reply.choices[0].message.content})
+    print(reply.choices[0].message.content)
