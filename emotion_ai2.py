@@ -1,8 +1,8 @@
-# version 0.2 - AI powered emotion and concern detection
-# replaces manual keyword matching with actual AI understanding
-# automatically detects emotion, concern, state from natural language
-# saves everything to concern.json permanently
-# next step: response layer - AI talks back like a friend
+# version 0.3 - conversation feels natural
+# switched to llama-3.3-70b-versatile for both API calls
+# added conversation history - AI remembers context within session
+# added resolved, leaving, severity detection
+# next step: follow up system - AI checks in on unresolved concerns
 import os
 import json
 from groq import Groq
@@ -58,13 +58,12 @@ Better: "Honestly bro, none of us can know that yet. But you're only imagining t
 The goal is not to be perfect.
 The goal is to be present, thoughtful, and human. keep responses short like texting a friend..The user is feeling {emotion} about {concern}. Respond accordingly.
 never explain yourself, just adapt. and never repeat the same apology twice
- 
+
 '''
 chat_history = []
 while True:
     user_message = input("talk to me: ")
     chat_history.append({"role": "user", "content": user_message})
-
 
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
