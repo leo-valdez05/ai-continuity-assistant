@@ -1,8 +1,10 @@
-# version 0.3 - conversation feels natural
-# switched to llama-3.3-70b-versatile for both API calls
-# added conversation history - AI remembers context within session
-# added resolved, leaving, severity detection
-# next step: follow-up system - AI checks in on unresolved concerns
+# version 0.3 - full memory and continuity system
+# reads concern.json and life_events.json at session start for cross-session memory
+# conversation history within session so AI remembers context
+# AI talks back like a friend using personality prompt
+# follows up naturally on unresolved concerns and life events
+# detects emotion, concern, severity, resolved, leaving, event_worthy per message
+# next step: version 0.4 - UI and Flask backend
 import os
 import json
 from groq import Groq
