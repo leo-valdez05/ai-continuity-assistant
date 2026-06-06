@@ -2,7 +2,7 @@
 # replaces manual keyword matching with actual AI understanding
 # automatically detects emotion, concern, state from natural language
 # saves everything to concern.json permanently
-# next step: response layer - AI talks back like a friend
+# next step: response layer - AI talks back like a frien
 import os
 import json
 from groq import Groq
