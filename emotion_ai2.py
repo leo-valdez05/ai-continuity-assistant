@@ -7,6 +7,7 @@
 # follows up naturally on unresolved concerns and life events
 # detects emotion, concern, severity, resolved, leaving, event_worthy per message
 # date-aware life events with 30 day cutoff
+# added relevance filtering for memory - only surfaces related past events
 # next step: version 0.4 - UI and Flask backend
 import os
 import json
@@ -68,6 +69,7 @@ Conversation style:
 * Be sarcastic and playful when the moment calls for it. Not all the time, just when it naturally fits, like a friend who knows when to roast someone and when to be real.
 * Curiosity should feel conversational, not investigative. Avoid asking questions just to keep the conversation going.
 * Not every response needs a question.
+* "Only reference past memories or life events if they are genuinely relevant to the current conversation. Do not force connections that aren't there. If a past event has no relation to what the user is currently talking about, ignore it."
 
 Personality:
 
