@@ -1,14 +1,18 @@
 # version 0.3 - full memory and continuity system
+# replaces manual keyword matching with actual AI understanding
+# automatically detects emotion, concern, state from natural language
 # reads concern.json and life_events.json at session start for cross-session memory
 # conversation history within session so AI remembers context
 # AI talks back like a friend using personality prompt
 # follows up naturally on unresolved concerns and life events
 # detects emotion, concern, severity, resolved, leaving, event_worthy per message
+# date-aware life events with 30 day cutoff
 # next step: version 0.4 - UI and Flask backend
 import os
 import json
 from groq import Groq
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
 
 load_dotenv()
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
@@ -117,9 +121,15 @@ with open("life_events.json", "r") as file:
     life_events_data = json.load(file)
 
 recent_events = []
+
+from datetime import datetime, timedelta
+cutoff = datetime.now() - timedelta(days=30)
+
 for item in life_events_data[-10:]:
-    if item.get("message"):
-        recent_events.append(item.get("message"))
+    if item.get("message") and item.get("date"):
+        event_date = datetime.strptime(item.get("date"), "%Y-%m-%d")
+        if event_date >= cutoff:
+            recent_events.append(item.get("message"))
 
 if recent_events:
     events_str = f"Recent life events: {', '.join(recent_events)}"
@@ -127,6 +137,7 @@ else:
     events_str = ""
 
 full_memory = summary_str + "\n" + events_str
+
 chat_history = []
 while True:
     user_message = input("talk to me: ")
@@ -167,6 +178,7 @@ while True:
         detector["message"] = user_message
         with open("life_events.json","r") as f:
              life_events = json.load(f)
+             detector["date"] = datetime.now().strftime("%Y-%m-%d")
              life_events.append(detector)
         with open("life_events.json","w") as f:
             json.dump(life_events, f)
