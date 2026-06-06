@@ -4,7 +4,7 @@
 # AI talks back like a friend using personality prompt
 # follows up naturally on unresolved concerns and life events
 # detects emotion, concern, severity, resolved, leaving, event_worthy per message
-# next step: version 0.4 - UI and Flask backend
+# next step: version 0.4 - UI and Flask backen
 import os
 import json
 from groq import Groq
