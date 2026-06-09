@@ -1,4 +1,4 @@
-# version 0.3 - full memory and continuity system
+# version 0.4 - Flask backend + browser UI connected
 # replaces manual keyword matching with actual AI understanding
 # automatically detects emotion, concern, state from natural language
 # reads concern.json and life_events.json at session start for cross-session memory
@@ -8,7 +8,10 @@
 # detects emotion, concern, severity, resolved, leaving, event_worthy per message
 # date-aware life events with 30 day cutoff
 # added relevance filtering for memory - only surfaces related past events
-# next step: version 0.4 - UI and Flask backend
+# added time-aware follow-up system with followup_date
+# fixed memory flaws - dynamic rebuild, resolved tracking, event_worthy filter
+# next step: version 0.5 - SQLite database, user profiles, mood UI colors
+
 import os
 import json
 from groq import Groq
@@ -17,7 +20,23 @@ from datetime import datetime, timedelta
 
 load_dotenv()
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-system_prompt = "when a user sends you a message, analyze for hidden emotions, don't overcomplicate,Also detect if the user is trying to leave or end the conversation. Add a fourth field 'leaving' Set leaving to true only when the user is genuinely ending the conversation — like saying goodbye, signing off, or indicating they have to go. Set leaving to false when the user is just changing the topic, saying things like 'leave that', 'forget it', 'never mind', or 'let's talk about something else'. Topic changes are not the same as leaving.Add a fifth field 'resolved' resolved: true only if the user explicitly mentions that a previously stated personal concern or problem has been fixed or sorted out. For casual conversation, games, or riddles, always set resolved to false.Add a sixth field 'severity' with values 'high', 'medium', or 'low'. High severity means life-changing concerns like career, health, relationships, or major personal struggles. Medium severity means moderately important issues. Low severity means minor or trivial problems. Assign severity based on the actual weight of the concern, not just the words used.Add a seventh field 'event_worthy' which is true when the moment feels emotionally significant but is not a serious concern — this includes excitement, joy, mild sadness, emptiness, or losing someone or something. These moments belong in life events, not concerns. Set event_worthy to false for neutral, casual, or insignificant messages. Deeply stressed, anxious, or serious problems with high severity go to concernSeverity should not be judged in isolation. Consider the impact of the issue on the user's current situation, goals, and life context. A small problem that affects something important to the user is not a small problem.json regardless of event_worthy.Severity should not be judged in isolation. Consider the impact of the issue on the user's current situation, goals, and life context. A small problem that affects something important to the user is not a small problem. respond only in JSON with seven fields fields: emotion, concern, state, leaving, resolved, severity, event_worthy"
+today = datetime.now().strftime("%Y-%m-%d")
+system_prompt = f"""Today's date is {today}.
+
+When a user sends you a message, analyze for hidden emotions, don't overcomplicate.
+
+Respond ONLY in JSON with exactly nine fields:
+1. emotion
+2. concern
+3. state
+4. leaving - true only when genuinely ending conversation. Set leaving to false when user is just changing topic with phrases like 'leave that', 'forget it', 'never mind'. Topic changes are not the same as leaving.
+5. resolved - true only if the user explicitly mentions a previously stated concern is fixed. For casual conversation, games, or riddles, always false.
+6. severity - high/medium/low. High means life-changing concerns like career, health, relationships. Medium means moderately important. Low means minor. Severity should consider impact on user's current life context, not just the issue alone. A small problem affecting something important is not a small problem.
+7. event_worthy -  Only set event_worthy to true when the message contains a genuinely meaningful personal moment or emotion. Do not set it true for agreement words like 'yes', 'okay', 'yeah', 'true', or casual filler responses.
+8. is_future_event - true if user mentioned something happening in the future, false otherwise.
+9. followup_date - actual date in YYYY-MM-DD format if is_future_event is true, null otherwise.
+
+IMPORTANT: Return ONLY the JSON object. No text before or after."""
 response_prompt = '''
 you are a warm, thoughtful conversational companion.
 
@@ -59,6 +78,7 @@ Conversation style:
 * Avoid excessive negativity.
 * Avoid dramatic language unless the situation genuinely calls for it.
 * Short and warm responses are often better than long speeches.
+* Match reply length to the complexity of the question. Simple questions get 1-2 sentences. Complex questions get 2-3 short paragraphs max. Never write walls of text. If a topic needs more explanation, break it into natural conversational parts and let the user ask follow up questions
 * Never give long explanations or advice dumps upfront. Ask one question at a time and wait for the response before giving the next piece of information or advice. Let the conversation unfold naturally like a real person would.
 * Never ask "what's on your mind?" more than once.
 * Never repeat the same question or apology twice in a conversation.
@@ -69,7 +89,7 @@ Conversation style:
 * Be sarcastic and playful when the moment calls for it. Not all the time, just when it naturally fits, like a friend who knows when to roast someone and when to be real.
 * Curiosity should feel conversational, not investigative. Avoid asking questions just to keep the conversation going.
 * Not every response needs a question.
-* "Only reference past memories or life events if they are genuinely relevant to the current conversation. Do not force connections that aren't there. If a past event has no relation to what the user is currently talking about, ignore it."
+* Only reference past memories or life events if they are genuinely relevant to the current conversation. Do not force connections that aren't there. If a past event has no relation to what the user is currently talking about, ignore it.
 
 Personality:
 
@@ -97,52 +117,63 @@ Before responding, quietly ask yourself:
 3. What do I actually know?
 4. Am I responding to reality or to assumptions?
 
+Mirror the user's communication style. If they write formally, be slightly more formal. If they write casually, be casual. If they use short messages, keep replies short. Never lock into one personality — adapt to how this specific person talks.
+
+Never break character. Never suddenly become robotic or overly formal. Never give generic AI responses. Stay consistent with whoever you've adapted to be for this user.
+
 The user is feeling {emotion} about {concern}. Respond accordingly.
 
 '''
-with open("concern.json", "r") as file:
-    concern = json.load(file)
-active_concerns = []
-
-for item in concern:
-    if (
-        item.get("resolved") == False
-        and item.get("severity") in ["medium", "high"]
-    ):
-        active_concerns.append(item.get("concern"))
-
-if active_concerns:
-    summary_str = (
-        f"This user has previously mentioned: "
-        f"{', '.join(active_concerns)}"
-    )
-else:
-    summary_str = "No significant unresolved concerns."
-
-with open("life_events.json", "r") as file:
-    life_events_data = json.load(file)
-
-recent_events = []
 
 from datetime import datetime, timedelta
 cutoff = datetime.now() - timedelta(days=30)
 
-for item in life_events_data[-10:]:
-    if item.get("message") and item.get("date"):
-        event_date = datetime.strptime(item.get("date"), "%Y-%m-%d")
-        if event_date >= cutoff:
-            recent_events.append(item.get("message"))
-
-if recent_events:
-    events_str = f"Recent life events: {', '.join(recent_events)}"
-else:
-    events_str = ""
-
-full_memory = summary_str + "\n" + events_str
-
 chat_history = []
-while True:
-    user_message = input("talk to me: ")
+def get_reply(user_message):
+
+    with open("concern.json", "r") as f:
+        concern_data = json.load(f)
+
+    active_concerns = []
+    for item in concern_data:
+        if item.get("resolved") == False and item.get("severity") in ["medium", "high"]:
+            active_concerns.append(item.get("concern"))
+
+    summary_str = f"This user has previously mentioned: {', '.join(active_concerns)}" if active_concerns else "No significant unresolved concerns."
+
+    with open("life_events.json", "r") as f:
+        life_events_data = json.load(f)
+
+    recent_events = []
+    for item in life_events_data[-10:]:
+        if item.get("message"):
+            try:
+                event_date = datetime.strptime(item.get("date"), "%Y-%m-%d")
+                if event_date >= cutoff:
+                    recent_events.append(item.get("message"))
+            except:
+                pass
+
+    events_str = f"Recent life events: {', '.join(recent_events)}" if recent_events else ""
+
+    followups = []
+    for item in life_events_data:
+        if item.get("followup_date") and item.get("resolved") != True:
+            try:
+                followup = datetime.strptime(item.get("followup_date"), "%Y-%m-%d")
+                today_date = datetime.now().date()
+                days_since = (datetime.now().date() - followup.date()).days
+                if followup.date() <= today_date and days_since <= 2:
+                    followups.append(item.get("message"))
+            except:
+                pass
+
+    followup_instruction = f"Unresolved follow ups (bring up naturally when conversation is calm, never at the start): {', '.join(followups)}" if followups else ""
+
+    full_memory = summary_str + "\n" + events_str
+    print("MEMORY:", full_memory)
+
+
     chat_history.append({"role": "user", "content": user_message})
 
     response = client.chat.completions.create(
@@ -161,42 +192,81 @@ while True:
     raw = raw.strip().replace("```json", "").replace("```", "").strip()
     start = raw.find("{")
     end = raw.rfind("}") + 1
+
     if start != -1 and end != 0:
         raw = raw[start:end]
+
     detector = json.loads(raw)
 
     if detector.get("leaving") == True:
         print("take care!")
-        break
+        return "take care!"
+
     if detector.get("concern") and detector.get("concern") not in ["none", "null"] and detector.get("severity") in [
-        "medium", "high"]:
+        "medium", "high"
+    ]:
         with open("concern.json", "r") as f:
             concern = json.load(f)
-            concern.append(detector)
+
+        concern.append(detector)
+
         with open("concern.json", "w") as f:
             json.dump(concern, f)
 
+    if detector.get("resolved") == True:
+        with open("concern.json", "r") as f:
+            concerns = json.load(f)
+        for item in concerns:
+            if item.get("concern") == detector.get("concern"):
+                item["resolved"] = True
+        with open("concern.json", "w") as f:
+            json.dump(concerns, f)
+
+        with open("life_events.json", "r") as f:
+            events = json.load(f)
+        for item in events:
+            if item.get("followup_date") and item.get("resolved") != True:
+                item["resolved"] = True
+        with open("life_events.json", "w") as f:
+            json.dump(events, f)
+
     if detector.get("event_worthy") == True:
         detector["message"] = user_message
-        with open("life_events.json","r") as f:
-             life_events = json.load(f)
-             detector["date"] = datetime.now().strftime("%Y-%m-%d")
-             life_events.append(detector)
-        with open("life_events.json","w") as f:
+
+        with open("life_events.json", "r") as f:
+            life_events = json.load(f)
+            detector["date"] = datetime.now().strftime("%Y-%m-%d")
+
+        life_events.append(detector)
+
+        with open("life_events.json", "w") as f:
             json.dump(life_events, f)
 
-    filled_prompt = response_prompt.replace("{emotion}", detector.get("emotion") or "something")
-    filled_prompt = filled_prompt.replace("{concern}", detector.get("concern") or "something on their mind")
+    filled_prompt = response_prompt.replace(
+        "{emotion}",
+        detector.get("emotion") or "something"
+    )
+    filled_prompt = filled_prompt.replace(
+        "{concern}",
+        detector.get("concern") or "something on their mind"
+    )
 
     reply = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[
             {
                 "role": "system",
-                "content": filled_prompt + "\n\nMemory:\n" + full_memory
+                "content": filled_prompt + "\n\nMemory:\n" + full_memory + "\n\n" + followup_instruction
             },
             *chat_history
         ]
     )
-    chat_history.append({"role": "assistant", "content": reply.choices[0].message.content})
+
+    chat_history.append(
+        {
+            "role": "assistant",
+            "content": reply.choices[0].message.content
+        }
+    )
     print(reply.choices[0].message.content)
+    return reply.choices[0].message.content
