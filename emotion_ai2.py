@@ -25,7 +25,7 @@ system_prompt = f"""Today's date is {today}.
 
 When a user sends you a message, analyze for hidden emotions, don't overcomplicate.
 
-Respond ONLY in JSON with exactly nine fields:
+Respond ONLY in JSON with exactly twelve fields:
 1. emotion
 2. concern
 3. state
@@ -35,6 +35,9 @@ Respond ONLY in JSON with exactly nine fields:
 7. event_worthy -  Only set event_worthy to true when the message contains a genuinely meaningful personal moment or emotion. Do not set it true for agreement words like 'yes', 'okay', 'yeah', 'true', or casual filler responses.
 8. is_future_event - true if user mentioned something happening in the future, false otherwise.
 9. followup_date - actual date in YYYY-MM-DD format if is_future_event is true, null otherwise.
+10.mood_color_primary — a hex color code representing the primary emotional tone. Warm colors (#2a1a0a range) for positive/excited emotions, cool blues (#0a1a2a range) for calm/peaceful, muted reds (#2a0a0a range) for stress/anxiety/anger, neutral dark (#1a1a1a range) for neutral emotions.
+11.mood_color_secondary — a second hex color that complements the primary for a gradient effect.
+12.mood_floor_color - a CSS gradient string for the input floor. Always format as "linear-gradient(to top, #XXXXXX, transparent)" where #XXXXXX is a very dark hex color with a subtle emotional tint. Examples: happy = #1e1408, sad = #0c0c1e, stressed = #1e0c0c, calm = #0c1a18, neutral = #16161e. Never use bright or saturated colors. The tint should be barely noticeable
 
 IMPORTANT: Return ONLY the JSON object. No text before or after."""
 response_prompt = '''
@@ -269,4 +272,4 @@ def get_reply(user_message):
         }
     )
     print(reply.choices[0].message.content)
-    return reply.choices[0].message.content
+    return reply.choices[0].message.content, detector.get("emotion", "neutral"), detector.get("mood_floor_color","linear-gradient(to top, #16161e, transparent)")
