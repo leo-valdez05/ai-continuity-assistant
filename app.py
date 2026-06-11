@@ -32,6 +32,7 @@ def chat():
     if conversation_id:
         save_message(conversation_id, "user", user_message)
         save_message(conversation_id, "ai", reply)
+        update_conversation_title(conversation_id, user_message[:50])
 
     return jsonify({"reply": reply, "emotion": emotion, "floor_color": floor_color})
 

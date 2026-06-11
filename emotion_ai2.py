@@ -183,6 +183,7 @@ def get_reply(user_message):
         from database import mark_resolved
         mark_resolved(detector.get("concern"))
 
+
     if detector.get("event_worthy") == True:
         detector["message"] = user_message
 
