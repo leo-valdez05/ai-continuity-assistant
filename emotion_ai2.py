@@ -17,6 +17,7 @@ import json
 from groq import Groq
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
+from database import save_concern, save_life_event, get_active_concerns, get_recent_life_events, get_followups
 
 load_dotenv()
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
@@ -133,48 +134,16 @@ cutoff = datetime.now() - timedelta(days=30)
 
 chat_history = []
 def get_reply(user_message):
-
-    with open("concern.json", "r") as f:
-        concern_data = json.load(f)
-
-    active_concerns = []
-    for item in concern_data:
-        if item.get("resolved") == False and item.get("severity") in ["medium", "high"]:
-            active_concerns.append(item.get("concern"))
-
+    active_concerns = get_active_concerns()
     summary_str = f"This user has previously mentioned: {', '.join(active_concerns)}" if active_concerns else "No significant unresolved concerns."
 
-    with open("life_events.json", "r") as f:
-        life_events_data = json.load(f)
-
-    recent_events = []
-    for item in life_events_data[-10:]:
-        if item.get("message"):
-            try:
-                event_date = datetime.strptime(item.get("date"), "%Y-%m-%d")
-                if event_date >= cutoff:
-                    recent_events.append(item.get("message"))
-            except:
-                pass
-
+    recent_events = get_recent_life_events()
     events_str = f"Recent life events: {', '.join(recent_events)}" if recent_events else ""
 
-    followups = []
-    for item in life_events_data:
-        if item.get("followup_date") and item.get("resolved") != True:
-            try:
-                followup = datetime.strptime(item.get("followup_date"), "%Y-%m-%d")
-                today_date = datetime.now().date()
-                days_since = (datetime.now().date() - followup.date()).days
-                if followup.date() <= today_date and days_since <= 2:
-                    followups.append(item.get("message"))
-            except:
-                pass
-
+    followups = get_followups()
     followup_instruction = f"Unresolved follow ups (bring up naturally when conversation is calm, never at the start): {', '.join(followups)}" if followups else ""
 
     full_memory = summary_str + "\n" + events_str
-    print("MEMORY:", full_memory)
 
 
     chat_history.append({"role": "user", "content": user_message})
@@ -208,42 +177,17 @@ def get_reply(user_message):
     if detector.get("concern") and detector.get("concern") not in ["none", "null"] and detector.get("severity") in [
         "medium", "high"
     ]:
-        with open("concern.json", "r") as f:
-            concern = json.load(f)
-
-        concern.append(detector)
-
-        with open("concern.json", "w") as f:
-            json.dump(concern, f)
+        save_concern(detector)
 
     if detector.get("resolved") == True:
-        with open("concern.json", "r") as f:
-            concerns = json.load(f)
-        for item in concerns:
-            if item.get("concern") == detector.get("concern"):
-                item["resolved"] = True
-        with open("concern.json", "w") as f:
-            json.dump(concerns, f)
-
-        with open("life_events.json", "r") as f:
-            events = json.load(f)
-        for item in events:
-            if item.get("followup_date") and item.get("resolved") != True:
-                item["resolved"] = True
-        with open("life_events.json", "w") as f:
-            json.dump(events, f)
+        from database import mark_resolved
+        mark_resolved(detector.get("concern"))
 
     if detector.get("event_worthy") == True:
         detector["message"] = user_message
 
-        with open("life_events.json", "r") as f:
-            life_events = json.load(f)
-            detector["date"] = datetime.now().strftime("%Y-%m-%d")
-
-        life_events.append(detector)
-
-        with open("life_events.json", "w") as f:
-            json.dump(life_events, f)
+    detector["date"] = datetime.now().strftime("%Y-%m-%d")
+    save_life_event(detector)
 
     filled_prompt = response_prompt.replace(
         "{emotion}",

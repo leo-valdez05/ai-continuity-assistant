@@ -1,5 +1,6 @@
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
+
 
 
 def init_db():
@@ -107,6 +108,113 @@ def get_conversations():
     conversations = cursor.fetchall()
     conn.close()
     return conversations
+
+def update_conversation_title(conversation_id, title):
+    conn = sqlite3.connect("heim.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE conversations SET title = ?, last_updated = datetime('now')
+        WHERE id = ?
+    """, (title[:50], conversation_id))
+    conn.commit()
+    conn.close()
+
+def save_concern(detector):
+    conn = sqlite3.connect("heim.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO concerns (emotion, concern, state, resolved, severity, 
+        event_worthy, is_future_event, followup_date, message, date)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        detector.get("emotion"),
+        detector.get("concern"),
+        detector.get("state"),
+        1 if detector.get("resolved") else 0,
+        detector.get("severity"),
+        1 if detector.get("event_worthy") else 0,
+        1 if detector.get("is_future_event") else 0,
+        detector.get("followup_date"),
+        detector.get("message"),
+        detector.get("date")
+    ))
+    conn.commit()
+    conn.close()
+
+def save_life_event(detector):
+    conn = sqlite3.connect("heim.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO life_events (emotion, concern, state, resolved, severity,
+        event_worthy, is_future_event, followup_date, message, date)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        detector.get("emotion"),
+        detector.get("concern"),
+        detector.get("state"),
+        1 if detector.get("resolved") else 0,
+        detector.get("severity"),
+        1 if detector.get("event_worthy") else 0,
+        1 if detector.get("is_future_event") else 0,
+        detector.get("followup_date"),
+        detector.get("message"),
+        detector.get("date")
+    ))
+    conn.commit()
+    conn.close()
+
+def get_active_concerns():
+    conn = sqlite3.connect("heim.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT concern FROM concerns
+        WHERE resolved = 0 AND severity IN ('medium', 'high')
+    """)
+    results = cursor.fetchall()
+    conn.close()
+    return [r[0] for r in results if r[0]]
+
+def get_recent_life_events():
+    conn = sqlite3.connect("heim.db")
+    cursor = conn.cursor()
+    cutoff = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    cursor.execute("""
+        SELECT message FROM life_events
+        WHERE message IS NOT NULL AND date >= ?
+        ORDER BY id DESC LIMIT 10
+    """, (cutoff,))
+    results = cursor.fetchall()
+    conn.close()
+    return [r[0] for r in results]
+
+def get_followups():
+    conn = sqlite3.connect("heim.db")
+    cursor = conn.cursor()
+    today = datetime.now().strftime("%Y-%m-%d")
+    cursor.execute("""
+        SELECT message FROM life_events
+        WHERE followup_date IS NOT NULL 
+        AND followup_date <= ? 
+        AND resolved = 0
+        AND message IS NOT NULL
+    """, (today,))
+    results = cursor.fetchall()
+    conn.close()
+    return [r[0] for r in results]
+
+def mark_resolved(concern_text):
+    conn = sqlite3.connect("heim.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE concerns SET resolved = 1
+        WHERE concern = ?
+    """, (concern_text,))
+    cursor.execute("""
+        UPDATE life_events SET resolved = 1
+        WHERE resolved = 0
+    """)
+    conn.commit()
+    conn.close()
 
 
 if __name__ == "__main__":

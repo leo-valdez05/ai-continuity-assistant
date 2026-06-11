@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, render_template
-from database import init_db, create_conversation, save_message, get_conversations
+from database import init_db, create_conversation, save_message, get_conversations,update_conversation_title
+
 from emotion_ai2 import get_reply
 
 app = Flask(__name__)
