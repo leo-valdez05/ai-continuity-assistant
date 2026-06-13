@@ -56,6 +56,10 @@ async function sendMessage() {
         thinking.remove();
         addMessage(data.reply, "ai");
         scrollToBottom();
+        if (data.leaving) {
+        endConversation();
+        loadSidebar();
+    }
     }, 900);
 
     const emotion = (data.emotion || "neutral").toLowerCase();
@@ -104,7 +108,11 @@ function addMessage(text, sender) {
     const chatArea = document.getElementById("chatArea");
     const bubble = document.createElement("div");
     bubble.classList.add("bubble", sender);
-    bubble.textContent = text;
+    if (sender === "ai") {
+        bubble.innerHTML = marked.parse(text);
+    } else {
+        bubble.textContent = text;
+    }
     chatArea.appendChild(bubble);
     scrollToBottom();
 }
@@ -173,3 +181,17 @@ function newChat() {
     document.getElementById("landing").style.display = "flex";
     document.querySelectorAll(".sidebar-item").forEach(i => i.classList.remove("active"));
 }
+async function endConversation() {
+    if (!conversationId) return;
+    const messages = Array.from(document.querySelectorAll(".bubble")).map(b => ({
+        role: b.classList.contains("user") ? "user" : "assistant",
+        content: b.textContent
+    }));
+    await fetch("/end_conversation", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({conversation_id: conversationId, messages: messages})
+    });
+}
+
+window.addEventListener("beforeunload", endConversation);

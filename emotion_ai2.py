@@ -196,4 +196,4 @@ def get_reply(user_message):
 
     chat_history.append({"role": "assistant", "content": reply_text})
 
-    return reply_text, detector.get("emotion", "neutral"), detector.get("mood_floor_color","linear-gradient(to top, #16161e, transparent)")
+    return reply_text, detector.get("emotion", "neutral"), detector.get("mood_floor_color","linear-gradient(to top, #16161e, transparent)"), detector.get("leaving", False)
