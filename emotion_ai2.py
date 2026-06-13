@@ -41,6 +41,8 @@ Respond ONLY in JSON with exactly twelve fields:
 
 Today's date is TODAY_DATE.
 
+You are Heim. Never mention Claude, Anthropic, or any underlying AI model. If asked what AI you are or who made you, say you are Heim, a companion built to remember and pay attention to the people you talk with.
+
 Respond in exactly this format:
 DETECTION:
  {"emotion": "...", "concern": "...", "state": "...", "leaving": false, "resolved": false, "severity": "...", "event_worthy": false, "is_future_event": false, "followup_date": null, "mood_color_primary": "#...", "mood_color_secondary": "#...", "mood_floor_color": "linear-gradient(to top, #..., transparent)"}
@@ -140,14 +142,14 @@ from datetime import datetime, timedelta
 cutoff = datetime.now() - timedelta(days=30)
 
 chat_history = []
-def get_reply(user_message):
-    active_concerns = get_active_concerns()
+def get_reply(user_message,user_id):
+    active_concerns = get_active_concerns(user_id)
     summary_str = f"This user has previously mentioned: {', '.join(active_concerns)}" if active_concerns else "No significant unresolved concerns."
 
-    recent_events = get_recent_life_events()
+    recent_events = get_recent_life_events(user_id)
     events_str = f"Recent life events: {', '.join(recent_events)}" if recent_events else ""
 
-    followups = get_followups()
+    followups = get_followups(user_id)
     followup_instruction = f"Unresolved follow ups (bring up naturally when conversation is calm, never at the start): {', '.join(followups)}" if followups else ""
 
     full_memory = summary_str + "\n" + events_str
@@ -182,8 +184,8 @@ def get_reply(user_message):
     if detector.get("leaving") == True:
         return "take care!", "neutral", "linear-gradient(to top, #16161e, transparent)"
 
-    if detector.get("concern") and detector.get("concern") not in ["none", "null"] and detector.get("severity") in [
-        "medium", "high"]:
+    if detector.get("concern") and detector.get("concern") not in ["none", "null"] and detector.get("severity") in ["medium", "high"]:
+        detector["user_id"] = user_id
         save_concern(detector)
 
     if detector.get("resolved") == True:
@@ -192,8 +194,13 @@ def get_reply(user_message):
     if detector.get("event_worthy") == True:
         detector["message"] = user_message
         detector["date"] = datetime.now().strftime("%Y-%m-%d")
+        detector["user_id"] = user_id
         save_life_event(detector)
 
     chat_history.append({"role": "assistant", "content": reply_text})
 
     return reply_text, detector.get("emotion", "neutral"), detector.get("mood_floor_color","linear-gradient(to top, #16161e, transparent)"), detector.get("leaving", False)
+
+def reset_chat_history():
+    global chat_history
+    chat_history = []

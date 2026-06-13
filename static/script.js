@@ -12,6 +12,10 @@ async function sendMessage() {
     const message = input.value.trim();
     if (!message) return;
 
+    if (input.disabled) return;
+    input.disabled = true;
+    setTimeout(() => input.disabled = false, 1000);
+
     if (!inChat) {
         await switchToChat();
     }
@@ -90,6 +94,8 @@ async function switchToChat() {
     });
     const data = await response.json();
     conversationId = data.conversation_id;
+    localStorage.setItem("lastConversationId", conversationId);
+
 
 
     inChat = true;
@@ -145,6 +151,7 @@ loadSidebar();
 
 async function loadConversation(convId) {
     conversationId = convId;
+    localStorage.setItem("lastConversationId", convId);
 
     // switch to chat view if not already there
     if (!inChat) {
@@ -168,8 +175,11 @@ async function loadConversation(convId) {
     document.querySelectorAll(".sidebar-item").forEach(item => {
         item.classList.remove("active");
     });
-    event.target.classList.add("active");
-
+    document.querySelectorAll(".sidebar-item").forEach(item => {
+    if (item.onclick.toString().includes(convId)) {
+        item.classList.add("active");
+    }
+});
     scrollToBottom();
 }
 
@@ -195,3 +205,30 @@ async function endConversation() {
 }
 
 window.addEventListener("beforeunload", endConversation);
+window.addEventListener("load", async () => {
+    await loadSidebar();
+    const lastId = localStorage.getItem("lastConversationId");
+    if (lastId) {
+        conversationId = parseInt(lastId);
+        await loadConversation(conversationId);
+    }
+});
+document.querySelectorAll("textarea").forEach(textarea => {
+    textarea.addEventListener("input", function() {
+        this.style.height = "auto";
+        this.style.height = this.scrollHeight + "px";
+    });
+    textarea.addEventListener("keypress", function(e) {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            if (this === getInput()) {
+            sendMessage();
+            }
+        }
+    });
+});
+async function logout() {
+    await fetch("/logout", {method: "POST"});
+    localStorage.removeItem("lastConversationId");
+    location.reload();
+}

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heim — Welcome</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .auth-container {
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 32px;
+        }
+
+        .auth-title {
+            font-size: 48px;
+            letter-spacing: 12px;
+            color: var(--text-primary);
+            animation: fadeUp 1s ease both;
+        }
+
+        .auth-sub {
+            font-size: 13px;
+            letter-spacing: 3px;
+            color: var(--text-muted);
+            animation: fadeUp 1s ease 0.2s both;
+        }
+
+        .auth-box {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            width: 320px;
+            animation: fadeUp 1s ease 0.4s both;
+        }
+
+        .auth-box input {
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 25px;
+            padding: 12px 18px;
+            color: var(--text-primary);
+            font-family: Georgia, serif;
+            font-size: 15px;
+            outline: none;
+            width: 100%;
+        }
+
+        .auth-box input:focus {
+            border-color: var(--accent-dim);
+        }
+
+        .auth-btn {
+            background: var(--accent);
+            border: none;
+            border-radius: 25px;
+            padding: 12px;
+            color: var(--bg);
+            font-family: Georgia, serif;
+            font-size: 15px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .auth-btn:hover { opacity: 0.85; }
+
+        .auth-switch {
+            font-size: 13px;
+            color: var(--text-muted);
+            text-align: center;
+            cursor: pointer;
+        }
+
+        .auth-switch span {
+            color: var(--accent);
+            cursor: pointer;
+        }
+
+        .auth-error {
+            color: #e05555;
+            font-size: 13px;
+            text-align: center;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-title">Heim</div>
+        <div class="auth-sub">your companion that remembers</div>
+
+        <div class="auth-box" id="loginBox">
+            <input type="text" id="loginUsername" placeholder="username">
+            <input type="password" id="loginPassword" placeholder="password">
+            <button class="auth-btn" onclick="login()">come home</button>
+            <div class="auth-error" id="loginError"></div>
+            <div class="auth-switch">new here? <span onclick="showSignup()">create an account</span></div>
+        </div>
+
+        <div class="auth-box" id="signupBox" style="display:none">
+            <input type="text" id="signupUsername" placeholder="choose a username">
+            <input type="password" id="signupPassword" placeholder="choose a password">
+            <button class="auth-btn" onclick="signup()">join Heim</button>
+            <div class="auth-error" id="signupError"></div>
+            <div class="auth-switch">already have an account? <span onclick="showLogin()">sign in</span></div>
+        </div>
+    </div>
+
+    <script>
+        function showSignup() {
+            document.getElementById("loginBox").style.display = "none";
+            document.getElementById("signupBox").style.display = "flex";
+        }
+
+        function showLogin() {
+            document.getElementById("signupBox").style.display = "none";
+            document.getElementById("loginBox").style.display = "flex";
+        }
+
+        async function login() {
+            const username = document.getElementById("loginUsername").value.trim();
+            const password = document.getElementById("loginPassword").value.trim();
+            if (!username || !password) return;
+
+            const res = await fetch("/login", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({username, password})
+            });
+            const data = await res.json();
+            if (data.success) {
+                window.location.href = "/";
+            } else {
+                const err = document.getElementById("loginError");
+                err.textContent = data.error;
+                err.style.display = "block";
+            }
+        }
+
+        async function signup() {
+            const username = document.getElementById("signupUsername").value.trim();
+            const password = document.getElementById("signupPassword").value.trim();
+            if (!username || !password) return;
+
+            const res = await fetch("/signup", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({username, password})
+            });
+            const data = await res.json();
+            if (data.success) {
+                window.location.href = "/";
+            } else {
+                const err = document.getElementById("signupError");
+                err.textContent = data.error;
+                err.style.display = "block";
+            }
+        }
+    </script>
+</body>
+</html>

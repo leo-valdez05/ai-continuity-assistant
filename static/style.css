@@ -497,3 +497,18 @@ html, body {
     position: relative;
     overflow: hidden;
 }
+.chat-input-wrap textarea,
+.landing-input-wrap textarea {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-family: Georgia, serif;
+    font-size: 15px;
+    resize: none;
+    overflow: hidden;
+    min-height: 24px;
+    max-height: 120px;
+    line-height: 1.5;
+}

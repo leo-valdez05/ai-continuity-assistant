@@ -1,6 +1,7 @@
 import sqlite3
 from datetime import datetime, timedelta
-
+import os
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "heim.db")
 
 
 def init_db():
@@ -74,13 +75,13 @@ def save_message(conversation_id, sender, content):
     conn.commit()
     conn.close()
 
-def create_conversation(title):
+def create_conversation(title, user_id):
     conn = sqlite3.connect("heim.db")
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO conversations (title, created_at, last_updated)
-        VALUES (?, datetime('now'), datetime('now'))
-    """, (title,))
+        INSERT INTO conversations (title, created_at, last_updated, user_id)
+        VALUES (?, datetime('now'), datetime('now'), ?)
+    """, (title, user_id))
     conn.commit()
     id = cursor.lastrowid
     conn.close()
@@ -98,14 +99,18 @@ def get_messages(conversation_id):
     conn.close()
     return messages
 
-def get_conversations():
-    conn = sqlite3.connect("heim.db")
+def get_conversations(user_id):
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    print("DB_PATH:", DB_PATH)
+    print("querying with user_id:", user_id, type(user_id))
     cursor.execute("""
         SELECT id, title FROM conversations
+        WHERE user_id = ?
         ORDER BY last_updated DESC
-    """)
+    """, (user_id,))
     conversations = cursor.fetchall()
+    print("raw result:", conversations)
     conn.close()
     return conversations
 
@@ -163,41 +168,46 @@ def save_life_event(detector):
     conn.commit()
     conn.close()
 
-def get_active_concerns():
+def get_active_concerns(user_id):
     conn = sqlite3.connect("heim.db")
     cursor = conn.cursor()
     cursor.execute("""
         SELECT concern FROM concerns
-        WHERE resolved = 0 AND severity IN ('medium', 'high')
-    """)
+        WHERE resolved = 0 
+        AND severity IN ('medium', 'high')
+        AND user_id = ?
+    """, (user_id,))
     results = cursor.fetchall()
     conn.close()
     return [r[0] for r in results if r[0]]
 
-def get_recent_life_events():
+def get_recent_life_events(user_id):
     conn = sqlite3.connect("heim.db")
     cursor = conn.cursor()
     cutoff = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
     cursor.execute("""
         SELECT message FROM life_events
-        WHERE message IS NOT NULL AND date >= ?
+        WHERE message IS NOT NULL 
+        AND date >= ?
+        AND user_id = ?
         ORDER BY id DESC LIMIT 10
-    """, (cutoff,))
+    """, (cutoff, user_id))
     results = cursor.fetchall()
     conn.close()
     return [r[0] for r in results]
 
-def get_followups():
+def get_followups(user_id):
     conn = sqlite3.connect("heim.db")
     cursor = conn.cursor()
     today = datetime.now().strftime("%Y-%m-%d")
     cursor.execute("""
         SELECT message FROM life_events
         WHERE followup_date IS NOT NULL 
-        AND followup_date <= ? 
+        AND followup_date <= ?
         AND resolved = 0
         AND message IS NOT NULL
-    """, (today,))
+        AND user_id = ?
+    """, (today, user_id))
     results = cursor.fetchall()
     conn.close()
     return [r[0] for r in results]
@@ -242,18 +252,44 @@ def save_conversation_summary(conversation_id, summary):
     conn.close()
 
 def get_conversation_summaries():
+    def get_conversations(user_id):
+        conn = sqlite3.connect("heim.db")
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, title FROM conversations
+            WHERE user_id = ?
+            ORDER BY last_updated DESC
+        """, (user_id,))
+        conversations = cursor.fetchall()
+        conn.close()
+        return conversations
+
+def create_user(username, password):
+    conn = sqlite3.connect("heim.db")
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO users (username, password, created_at)
+            VALUES (?, ?, datetime('now'))
+        """, (username, password))
+        conn.commit()
+        user_id = cursor.lastrowid
+        conn.close()
+        return user_id
+    except sqlite3.IntegrityError:
+        conn.close()
+        return None  # username already exists
+
+def get_user(username, password):
     conn = sqlite3.connect("heim.db")
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT summary FROM conversations 
-        WHERE summary IS NOT NULL 
-        ORDER BY last_updated DESC 
-        LIMIT 5
-    """)
-    results = cursor.fetchall()
+        SELECT id, username FROM users 
+        WHERE username = ? AND password = ?
+    """, (username, password))
+    user = cursor.fetchone()
     conn.close()
-    return [r[0] for r in results if r[0]]
-
+    return user
 
 if __name__ == "__main__":
     init_db()

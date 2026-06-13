@@ -1,0 +1,11 @@
+import sqlite3
+conn = sqlite3.connect("heim.db")
+cursor = conn.cursor()
+cursor.execute("DELETE FROM concerns WHERE user_id IS NULL")
+cursor.execute("DELETE FROM life_events WHERE user_id IS NULL")
+conn.commit()
+cursor.execute("SELECT COUNT(*) FROM concerns")
+print("concerns remaining:", cursor.fetchone())
+cursor.execute("SELECT COUNT(*) FROM life_events")
+print("life_events remaining:", cursor.fetchone())
+conn.close()
