@@ -14,21 +14,20 @@
 
 import os
 import json
-from groq import Groq
+import anthropic
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
-from database import save_concern, save_life_event, get_active_concerns, get_recent_life_events, get_followups
+from database import save_concern, save_life_event, get_active_concerns, get_recent_life_events, get_followups, mark_resolved
 
 load_dotenv()
-client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 today = datetime.now().strftime("%Y-%m-%d")
-system_prompt = f"""Today's date is {today}.
+system_prompt = """
 
 When a user sends you a message, analyze for hidden emotions, don't overcomplicate.
-
 Respond ONLY in JSON with exactly twelve fields:
 1. emotion
-2. concern
+2. concern - When storing the concern field, be specific and descriptive. Instead of 'relationship issues' write 'girlfriend visit cancelled due to mom not allowing it'. Instead of 'family issues' write 'conflict with mom about going out'. The concern should capture the actual situation, not just the category.
 3. state
 4. leaving - true only when genuinely ending conversation. Set leaving to false when user is just changing topic with phrases like 'leave that', 'forget it', 'never mind'. Topic changes are not the same as leaving.
 5. resolved - true only if the user explicitly mentions a previously stated concern is fixed. For casual conversation, games, or riddles, always false.
@@ -38,9 +37,17 @@ Respond ONLY in JSON with exactly twelve fields:
 9. followup_date - actual date in YYYY-MM-DD format if is_future_event is true, null otherwise.
 10.mood_color_primary — a hex color code representing the primary emotional tone. Warm colors (#2a1a0a range) for positive/excited emotions, cool blues (#0a1a2a range) for calm/peaceful, muted reds (#2a0a0a range) for stress/anxiety/anger, neutral dark (#1a1a1a range) for neutral emotions.
 11.mood_color_secondary — a second hex color that complements the primary for a gradient effect.
-12.mood_floor_color - a CSS gradient string for the input floor. Always format as "linear-gradient(to top, #XXXXXX, transparent)" where #XXXXXX is a very dark hex color with a subtle emotional tint. Examples: happy = #1e1408, sad = #0c0c1e, stressed = #1e0c0c, calm = #0c1a18, neutral = #16161e. Never use bright or saturated colors. The tint should be barely noticeable
+12.mood_floor_color - a CSS gradient string for the input floor. Always format as "linear-gradient(to top, #XXXXXX, transparent)" where #XXXXXX is a very dark hex color with a subtle emotional tint. Examples: happy = #1e1408, sad = #0c0c1e, stressed = #1e0c0c, calm = #0c1a18, neutral = #16161e. Never use bright or saturated colors. The tint should be barely noticeable.
 
-IMPORTANT: Return ONLY the JSON object. No text before or after."""
+Today's date is TODAY_DATE.
+
+Respond in exactly this format:
+DETECTION:
+ {"emotion": "...", "concern": "...", "state": "...", "leaving": false, "resolved": false, "severity": "...", "event_worthy": false, "is_future_event": false, "followup_date": null, "mood_color_primary": "#...", "mood_color_secondary": "#...", "mood_floor_color": "linear-gradient(to top, #..., transparent)"}
+REPLY: your warm friendly response here"""
+system_prompt = system_prompt.replace("TODAY_DATE", today)
+
+
 response_prompt = '''
 you are a warm, thoughtful conversational companion.
 
@@ -148,73 +155,45 @@ def get_reply(user_message):
 
     chat_history.append({"role": "user", "content": user_message})
 
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {
-                "role": "system",
-                "content": system_prompt + "\n\nMemory:\n" + full_memory
-            },
-            *chat_history
-        ]
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1500,
+        system=system_prompt + "\n\nMemory:\n" + full_memory + "\n\n" + followup_instruction,
+        messages=chat_history
     )
 
-    print(response.choices[0].message.content)
-    raw = response.choices[0].message.content
-    raw = raw.strip().replace("```json", "").replace("```", "").strip()
-    start = raw.find("{")
-    end = raw.rfind("}") + 1
+    raw = response.content[0].text
 
+    if "REPLY:" in raw:
+        detection_part = raw.split("REPLY:")[0].replace("DETECTION:", "").strip()
+        reply_text = raw.split("REPLY:")[1].strip()
+    else:
+        detection_part = raw
+        reply_text = "hey, what's up?"
+
+    detection_part = detection_part.replace("```json", "").replace("```", "").strip()
+    start = detection_part.find("{")
+    end = detection_part.rfind("}") + 1
     if start != -1 and end != 0:
-        raw = raw[start:end]
+        detection_part = detection_part[start:end]
 
-    detector = json.loads(raw)
+    detector = json.loads(detection_part)
 
     if detector.get("leaving") == True:
-        print("take care!")
-        return "take care!"
+        return "take care!", "neutral", "linear-gradient(to top, #16161e, transparent)"
 
     if detector.get("concern") and detector.get("concern") not in ["none", "null"] and detector.get("severity") in [
-        "medium", "high"
-    ]:
+        "medium", "high"]:
         save_concern(detector)
 
     if detector.get("resolved") == True:
-        from database import mark_resolved
         mark_resolved(detector.get("concern"))
-
 
     if detector.get("event_worthy") == True:
         detector["message"] = user_message
+        detector["date"] = datetime.now().strftime("%Y-%m-%d")
+        save_life_event(detector)
 
-    detector["date"] = datetime.now().strftime("%Y-%m-%d")
-    save_life_event(detector)
+    chat_history.append({"role": "assistant", "content": reply_text})
 
-    filled_prompt = response_prompt.replace(
-        "{emotion}",
-        detector.get("emotion") or "something"
-    )
-    filled_prompt = filled_prompt.replace(
-        "{concern}",
-        detector.get("concern") or "something on their mind"
-    )
-
-    reply = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {
-                "role": "system",
-                "content": filled_prompt + "\n\nMemory:\n" + full_memory + "\n\n" + followup_instruction
-            },
-            *chat_history
-        ]
-    )
-
-    chat_history.append(
-        {
-            "role": "assistant",
-            "content": reply.choices[0].message.content
-        }
-    )
-    print(reply.choices[0].message.content)
-    return reply.choices[0].message.content, detector.get("emotion", "neutral"), detector.get("mood_floor_color","linear-gradient(to top, #16161e, transparent)")
+    return reply_text, detector.get("emotion", "neutral"), detector.get("mood_floor_color","linear-gradient(to top, #16161e, transparent)")

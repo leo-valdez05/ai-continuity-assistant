@@ -216,6 +216,44 @@ def mark_resolved(concern_text):
     conn.commit()
     conn.close()
 
+import sqlite3
+conn = sqlite3.connect("heim.db")
+cursor = conn.cursor()
+cursor.execute("SELECT concern, severity, resolved FROM concerns ORDER BY id DESC LIMIT 10")
+print(cursor.fetchall())
+conn.close()
+
+def save_conversation_summary(conversation_id, summary):
+    conn = sqlite3.connect("heim.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE conversations SET summary = ? WHERE id = ?
+    """, (summary, conversation_id))
+    conn.commit()
+    conn.close()
+
+def save_conversation_summary(conversation_id, summary):
+    conn = sqlite3.connect("heim.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE conversations SET summary = ? WHERE id = ?
+    """, (summary, conversation_id))
+    conn.commit()
+    conn.close()
+
+def get_conversation_summaries():
+    conn = sqlite3.connect("heim.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT summary FROM conversations 
+        WHERE summary IS NOT NULL 
+        ORDER BY last_updated DESC 
+        LIMIT 5
+    """)
+    results = cursor.fetchall()
+    conn.close()
+    return [r[0] for r in results if r[0]]
+
 
 if __name__ == "__main__":
     init_db()
