@@ -59,8 +59,18 @@ def init_db():
     );
     """)
 
+    cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_profile (
+                user_id INTEGER PRIMARY KEY,
+                profile TEXT,
+                last_updated DATETIME
+            )
+        """)
+
     conn.commit()
     conn.close()
+
+
 
 
 
@@ -290,6 +300,28 @@ def get_user(username, password):
     user = cursor.fetchone()
     conn.close()
     return user
+
+
+def get_user_profile(user_id):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT profile FROM user_profile WHERE user_id = ?", (user_id,))
+    result = cursor.fetchone()
+    conn.close()
+    return result[0] if result else None
+
+def update_user_profile(user_id, profile):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO user_profile (user_id, profile, last_updated)
+        VALUES (?, ?, datetime('now'))
+        ON CONFLICT(user_id) DO UPDATE SET
+        profile = excluded.profile,
+        last_updated = excluded.last_updated
+    """, (user_id, profile))
+    conn.commit()
+    conn.close()
 
 if __name__ == "__main__":
     init_db()

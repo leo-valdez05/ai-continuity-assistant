@@ -17,7 +17,7 @@ import json
 import anthropic
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
-from database import save_concern, save_life_event, get_active_concerns, get_recent_life_events, get_followups, mark_resolved
+from database import save_concern, save_life_event, get_active_concerns, get_recent_life_events, get_followups, mark_resolved, get_user_profile
 
 load_dotenv()
 client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
@@ -140,9 +140,10 @@ The user is feeling {emotion} about {concern}. Respond accordingly.
 
 from datetime import datetime, timedelta
 cutoff = datetime.now() - timedelta(days=30)
-
 chat_history = []
 def get_reply(user_message,user_id):
+    summarize_old_messages(user_id)
+
     active_concerns = get_active_concerns(user_id)
     summary_str = f"This user has previously mentioned: {', '.join(active_concerns)}" if active_concerns else "No significant unresolved concerns."
 
@@ -153,6 +154,11 @@ def get_reply(user_message,user_id):
     followup_instruction = f"Unresolved follow ups (bring up naturally when conversation is calm, never at the start): {', '.join(followups)}" if followups else ""
 
     full_memory = summary_str + "\n" + events_str
+
+    user_profile = get_user_profile(user_id) or ""
+
+    if user_profile:
+        full_memory = full_memory + "\n\nWho this person is:\n" + user_profile
 
 
     chat_history.append({"role": "user", "content": user_message})
@@ -165,13 +171,15 @@ def get_reply(user_message,user_id):
     )
 
     raw = response.content[0].text
+    print("RAW:", raw[:200])
+
 
     if "REPLY:" in raw:
         detection_part = raw.split("REPLY:")[0].replace("DETECTION:", "").strip()
         reply_text = raw.split("REPLY:")[1].strip()
     else:
-        detection_part = raw
-        reply_text = "hey, what's up?"
+        detection_part = '{"emotion": "neutral", "concern": "none", "state": "neutral", "leaving": false, "resolved": false, "severity": "low", "event_worthy": false, "is_future_event": false, "followup_date": null, "mood_color_primary": "#1a1a2e", "mood_color_secondary": "#16213e", "mood_floor_color": "linear-gradient(to top, #16161e, transparent)"}'
+        reply_text = raw
 
     detection_part = detection_part.replace("```json", "").replace("```", "").strip()
     start = detection_part.find("{")
@@ -182,9 +190,11 @@ def get_reply(user_message,user_id):
     detector = json.loads(detection_part)
 
     if detector.get("leaving") == True:
-        return "take care!", "neutral", "linear-gradient(to top, #16161e, transparent)"
+        return "take care!", "neutral", "linear-gradient(to top, #16161e, transparent)", True
 
     if detector.get("concern") and detector.get("concern") not in ["none", "null"] and detector.get("severity") in ["medium", "high"]:
+        print("saving concern with user_id:", user_id)
+
         detector["user_id"] = user_id
         save_concern(detector)
 
@@ -204,3 +214,78 @@ def get_reply(user_message,user_id):
 def reset_chat_history():
     global chat_history
     chat_history = []
+
+
+def update_profile(user_id, conversation_messages):
+    print("updating profile for user:", user_id)
+    from database import get_user_profile, update_user_profile
+
+    existing_profile = get_user_profile(user_id) or "No profile yet."
+
+    messages_text = "\n".join([f"{m['role']}: {m['content']}" for m in conversation_messages[-20:]])
+
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=300,
+        system="""You are building a psychological profile of a user based on their conversations. 
+        Focus on: who they are as a person, their values, fears, patterns, how they handle emotions, relationships, and what drives them.
+        Write in 3-5 sentences. Be specific, not generic. Update the existing profile with new insights.
+        Never mention specific events — focus on patterns and identity.
+        Write as if describing who this person fundamentally is.""",
+        messages=[{
+            "role": "user",
+            "content": f"Existing profile:\n{existing_profile}\n\nNew conversation:\n{messages_text}\n\nWrite an updated profile."
+        }]
+    )
+
+    new_profile = response.content[0].text
+    print("updating profile for user:", user_id)
+    update_user_profile(user_id, new_profile)
+    return new_profile
+
+def get_chat_history():
+    return chat_history
+
+
+def summarize_old_messages(user_id):
+    global chat_history
+    if len(chat_history) <= 30:
+        return
+
+    old_messages = chat_history[:-15]
+    recent_messages = chat_history[-15:]
+
+    messages_text = "\n".join([f"{m['role']}: {m['content']}" for m in old_messages])
+
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=600,
+        system="""You are summarizing part of an ongoing conversation to preserve context.
+Be extremely specific. Include:
+- Every topic discussed with exact details (names, numbers, subjects, plans)
+- Emotional state and how it evolved
+- Specific things the user shared about their life
+- Any questions asked and answered
+- Anything important that was mentioned
+This summary will replace the earlier messages so the conversation can continue naturally.
+Write in first person as if you are the AI recalling what was discussed.""",
+        messages=[{"role": "user", "content": messages_text}]
+    )
+
+    summary = response.content[0].text
+
+    chat_history = [
+        {"role": "assistant", "content": f"[Earlier in our conversation: {summary}]"},
+        *recent_messages
+    ]
+
+    print("summarized", len(old_messages), "messages into summary")
+
+if __name__ == "__main__":
+        # test summarization with fake messages
+        chat_history = [{"role": "user", "content": f"message {i}"} for i in range(35)]
+        print("before:", len(chat_history), "messages")
+        summarize_old_messages(1)
+        print("after:", len(chat_history), "messages")
+        print("first message:", chat_history[0])
+

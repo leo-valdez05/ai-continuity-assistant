@@ -9,3 +9,5 @@ print("concerns remaining:", cursor.fetchone())
 cursor.execute("SELECT COUNT(*) FROM life_events")
 print("life_events remaining:", cursor.fetchone())
 conn.close()
+
+

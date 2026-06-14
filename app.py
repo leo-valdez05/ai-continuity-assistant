@@ -2,7 +2,7 @@ import os
 from flask import Flask, request, jsonify, render_template,session, redirect, url_for
 from database import init_db, create_conversation, save_message, get_conversations,update_conversation_title, create_user, get_user
 
-from emotion_ai2 import get_reply
+from emotion_ai2 import get_reply,reset_chat_history, get_chat_history, update_profile
 
 app = Flask(__name__)
 app.secret_key = "heim_secret_key_change_this_later"
@@ -87,8 +87,12 @@ def show_messages(conv_id):
     from database import get_messages
     return jsonify(get_messages(conv_id))
 
+
 @app.route("/end_conversation", methods=["POST"])
 def end_conversation():
+    from database import save_conversation_summary, update_conversation_title
+    from emotion_ai2 import update_profile, get_chat_history
+
     data = request.json
     conversation_id = data.get("conversation_id")
     messages = data.get("messages")
@@ -96,23 +100,12 @@ def end_conversation():
     if not conversation_id or not messages:
         return jsonify({"status": "ok"})
 
-    import anthropic
-    ai = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+    user_id = session.get("user_id")
 
-    summary_response = ai.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=100,
-        system="Generate a short 5-7 word title summarizing this conversation. Return ONLY the title, nothing else. No quotes, no punctuation at the end.",
-        messages=[{"role": "user", "content": str(messages)}]
-    )
+    if user_id:
+        update_profile(user_id, get_chat_history())
 
-    title = summary_response.content[0].text.strip()
-
-    from database import save_conversation_summary, update_conversation_title
-    save_conversation_summary(conversation_id, title)
-    update_conversation_title(conversation_id, title)
-
-    return jsonify({"status": "ok", "title": title})
+    return jsonify({"status": "ok"})
 
 
 if __name__ == "__main__":
